@@ -16,3 +16,6 @@ export const addToCart = (
         userId,
         productId,
     });
+
+export const getCart = (userId: string): Promise<AxiosResponse<any>> =>
+    api.get(`/cart/${userId}`);

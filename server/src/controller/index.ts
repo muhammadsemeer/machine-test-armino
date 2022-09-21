@@ -12,6 +12,7 @@ const products = [
         minQuantity: 3,
         offers: [
             {
+                id: 456,
                 value: 500,
                 condition: ">=",
                 benefit: "discount",
@@ -28,6 +29,7 @@ const products = [
         minQuantity: 10,
         offers: [
             {
+                id: 123,
                 value: 3000,
                 condition: ">",
                 benefit: "flatDiscount",
