@@ -12,7 +12,6 @@ const products = [
         minQuantity: 3,
         offers: [
             {
-                key: "total",
                 value: 500,
                 condition: ">=",
                 benefit: "discount",
@@ -29,11 +28,10 @@ const products = [
         minQuantity: 10,
         offers: [
             {
-                key: "total",
                 value: 3000,
                 condition: ">",
                 benefit: "flatDiscount",
-                discount: "1000",
+                discount: 1000,
             },
         ],
     },
@@ -43,10 +41,44 @@ const products = [
         image: "https://m.media-amazon.com/images/I/81IiFRUxeWL._UL1500_.jpg",
         maxQuantity: 2,
         price: 1500,
-        minQuantity: 0,
+        minQuantity: 1,
         offers: [],
     },
 ];
+
+const applyOffer = (product: any, total: number) => {
+    const { offers } = product;
+
+    offers.forEach((offer: any, index: number) => {
+        if (
+            offer.benefit === "discount" &&
+            eval(`${total} ${offer.condition} ${offer.value}`)
+        ) {
+            let offerText = "";
+            const discount = (offer.percent / 100) * total;
+            if (discount >= offer.max) {
+                total = total - offer.max;
+                offerText = `${offer.max} Rs Discount Applied`;
+            } else {
+                total = total - discount;
+                offerText = `${discount} Rs Discount Applied`;
+            }
+            offers[index].applied = true;
+            offers[index].appliedText = offerText;
+        }
+
+        if (
+            offer.benefit === "flatDiscount" &&
+            eval(`${total} ${offer.condition} ${offer.value}`)
+        ) {
+            total = total - offer.discount;
+            offers[index].applied = true;
+            offers[index].appliedText = `${offer.discount} Rs Discount Applied`;
+        }
+    });
+
+    return [product, total];
+};
 
 export class IndexController extends Controller {
     path = "/";
@@ -68,6 +100,11 @@ export class IndexController extends Controller {
             path: "/add-to-cart",
             method: Methods.POST,
             handler: this.addToCart,
+        },
+        {
+            path: "/cart/:userId",
+            method: Methods.GET,
+            handler: this.getCart,
         },
     ];
 
@@ -107,7 +144,12 @@ export class IndexController extends Controller {
                 (item) => item.id === productId
             );
             if (isProductExist !== -1) {
-                cart[isProductExist].quantity += 1;
+                if (
+                    products[isProductExist].maxQuantity !==
+                    cart[isProductExist].quantity
+                ) {
+                    cart[isProductExist].quantity += 1;
+                }
             } else {
                 cart.push({
                     id: productId,
@@ -130,5 +172,83 @@ export class IndexController extends Controller {
         }
 
         return res.sendStatus(200);
+    }
+
+    public async getCart(req: Request, res: Response, next: NextFunction) {
+        const { userId } = req.params;
+
+        const redisKey = `cart-${userId}`;
+
+        let cart: { id: number; quantity: number }[];
+
+        try {
+            cart = JSON.parse((await redisClient.get(redisKey)) as string);
+        } catch (error) {
+            return next(new ErrorHandler(500, "RedisErrorWhileGettingCart"));
+        }
+
+        let cartWithProductDetails: any = [],
+            total = 0;
+
+        if (cart) {
+            cartWithProductDetails = cart
+                .map(({ id, quantity }) => {
+                    const product: any = products.find(
+                        (product) => product.id === id
+                    );
+
+                    if (product) {
+                        return {
+                            product: {
+                                id: product.id,
+                                title: product.title,
+                                image: product.image,
+                                price: product.price,
+                                offers: product.offers,
+                            },
+                            quantity,
+                            total: quantity * product.price,
+                        };
+                    }
+
+                    return null;
+                })
+                .filter((item) => item !== null);
+
+            cartWithProductDetails = cartWithProductDetails.map(
+                ({ product, total, ...rest }: any) => {
+                    [product, total] = applyOffer(product, total);
+
+                    return {
+                        product,
+                        total,
+                        ...rest,
+                    };
+                }
+            );
+
+            total = cartWithProductDetails.reduce(
+                (t: number, n: any) => t + (n?.total || 0),
+                0
+            );
+        }
+
+        const totalOffer = {
+            applied: false,
+            offerText: "",
+        };
+
+        if (total > 10000) {
+            totalOffer.applied = true;
+            totalOffer.offerText =
+                "Promo Code 'PRIME123' applied and RS 123 discount ";
+            total = total - 123;
+        }
+
+        return res.json({
+            cart: cartWithProductDetails,
+            total,
+            totalOffer,
+        });
     }
 }
