@@ -7,3 +7,12 @@ export const getAllProducts = (): Promise<
         products: IProduct[];
     }>
 > => api.get("/products");
+
+export const addToCart = (
+    userId: string,
+    productId: number
+): Promise<AxiosResponse> =>
+    api.post("/add-to-cart", {
+        userId,
+        productId,
+    });
